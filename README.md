@@ -7,7 +7,7 @@
 Upload scanned or digital PDFs / images → OCR (scanned pages only) → extraction → cross-checks → Excel download.
 
 - **Invoices mode** (no API key): invoice no, date, vendor, subtotal, tax, total, line items. Checks line items vs subtotal, subtotal + tax vs total, unreadable values.
-- **Custom fields mode** (Anthropic API key): type any field names. Every value must come with an exact quote from the page; values whose quote is not found in the text are highlighted.
+- **Custom fields mode** (optional, hidden in the public demo; enable with env `ENABLE_AI=1` + an Anthropic API key): every value must come with an exact quote from the page; unverified values are highlighted.
 - Digital PDFs use the text layer (exact); scanned pages fall back to Tesseract OCR (eng / vie).
 - Sample files in `samples/` are fictional.
 

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -7,6 +8,7 @@ from core import extract_invoices, read_document, to_excel
 
 SAMPLES = Path(__file__).parent / "samples"
 YELLOW = "background-color:#FFF2A8"
+AI_ENABLED = os.environ.get("ENABLE_AI") == "1"
 
 st.set_page_config(page_title="Document → Excel Extractor", page_icon="📄", layout="wide")
 st.title("Document → Checked Excel")
@@ -15,7 +17,8 @@ st.caption("Upload scanned or digital PDFs / images. Data is extracted, cross-ch
 
 with st.sidebar:
     st.header("Settings")
-    mode = st.radio("Extraction mode", ["Invoices (built-in rules)", "Custom fields (AI, needs API key)"])
+    modes = ["Invoices (built-in rules)"] + (["Custom fields (AI, needs API key)"] if AI_ENABLED else [])
+    mode = st.radio("Extraction mode", modes) if len(modes) > 1 else modes[0]
     ocr_lang = st.selectbox("OCR language", ["eng", "vie", "eng+vie"], help="Used only for scanned pages")
     if mode.startswith("Custom"):
         api_key = st.text_input("Anthropic API key", type="password", help="Used only for this session")
