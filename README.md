@@ -1,5 +1,7 @@
 # Document → Checked Excel (Streamlit demo)
 
+**Live demo: https://duong-doc-to-excel.streamlit.app**
+
 ![App screenshot](docs/screenshot.png)
 
 Upload scanned or digital PDFs / images → OCR (scanned pages only) → extraction → cross-checks → Excel download.
