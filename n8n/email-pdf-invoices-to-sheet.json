@@ -1,0 +1,128 @@
+{
+  "name": "Email PDF invoices → validated Google Sheet",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "has:attachment filename:pdf"
+        },
+        "options": {
+          "downloadAttachments": true
+        }
+      }
+    },
+    {
+      "id": "2",
+      "name": "Extract PDF text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "attachment_0",
+        "options": {}
+      }
+    },
+    {
+      "id": "3",
+      "name": "Parse & validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// n8n Code node (\"Run Once for Each Item\"). Input: $json.text from \"Extract from File\" (PDF).\n// Mirrors parse_invoice / check_invoice in core.py.\nconst MONEY = String.raw`(\\d[\\d,]*\\.\\d{2})`;\nconst num = s => (s == null ? null : parseFloat(s.replace(/,/g, '')));\nconst grab = (re, t) => { const m = t.match(re); return m ? m[1].trim() : null; };\n\nfunction parse(text) {\n  const lines = text.split(/\\r?\\n/).map(l => l.trim()).filter(Boolean);\n  const rec = {\n    invoiceNo: grab(/Invoice\\s*(?:No|Number|#)\\.?:?\\s*([A-Z0-9][A-Z0-9-]{3,})/i, text),\n    date: grab(/(?:Invoice\\s*)?Date:?\\s*(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}\\/\\d{1,2}\\/\\d{4})/i, text),\n    vendor: lines.length ? lines[0].replace(/\\s*INVOICE$/i, '') : null,\n    subtotal: num(grab(new RegExp(String.raw`Subtotal:?\\s*\\$?` + MONEY, 'i'), text)),\n    tax: num(grab(new RegExp(String.raw`^\\s*Tax\\b.*?:?\\s*\\$?` + MONEY, 'im'), text)),\n    total: num(grab(new RegExp(String.raw`^\\s*(?:TOTAL|Amount Due|Total Due):?\\s*\\$?` + MONEY, 'im'), text)),\n  };\n  const items = [];\n  const lineRe = new RegExp(String.raw`^(.+?)\\s+(\\S{1,3})\\s+\\$?` + MONEY + String.raw`\\s+\\$?` + MONEY + '$');\n  for (const l of lines) {\n    const m = l.match(lineRe);\n    if (m && !/^(subtotal|tax|total)/i.test(l)) {\n      items.push({ description: m[1], qty: /^\\d+$/.test(m[2]) ? parseInt(m[2]) : null, qtyRead: m[2], unitPrice: num(m[3]), amount: num(m[4]) });\n    }\n  }\n  return { rec, items };\n}\n\nfunction check(rec, items) {\n  const issues = [];\n  for (const [k, label] of [['invoiceNo', 'Invoice No'], ['date', 'Date'], ['subtotal', 'Subtotal'], ['total', 'Total']])\n    if (rec[k] == null) issues.push(`${label}: not readable`);\n  if (rec.subtotal != null && items.length) {\n    const s = Math.round(items.reduce((a, i) => a + i.amount, 0) * 100) / 100;\n    if (Math.abs(s - rec.subtotal) > 0.01) issues.push(`Subtotal: line items add up to ${s.toFixed(2)}`);\n  }\n  if (rec.subtotal != null && rec.tax != null && rec.total != null && Math.abs(rec.subtotal + rec.tax - rec.total) > 0.01)\n    issues.push('Total: subtotal + tax does not equal total');\n  for (const i of items) {\n    if (i.qty == null) issues.push(`Line items: qty unreadable on '${i.description}'`);\n    else if (Math.abs(i.qty * i.unitPrice - i.amount) > 0.01) issues.push(`Line items: '${i.description}' qty x price != amount`);\n  }\n  return issues;\n}\n\nfunction run(text, meta = {}) {\n  const { rec, items } = parse(text || '');\n  const issues = check(rec, items);\n  return {\n    'Received': meta.date || '',\n    'From': meta.from || '',\n    'File': meta.file || '',\n    'Vendor': rec.vendor,\n    'Invoice No': rec.invoiceNo,\n    'Date': rec.date,\n    'Subtotal': rec.subtotal,\n    'Tax': rec.tax,\n    'Total': rec.total,\n    'Line items': items.length,\n    'Status': issues.length ? 'CHECK' : 'OK',\n    'Notes': issues.join('; '),\n  };\n}\n\nif (typeof $json !== 'undefined') {\n  const src = $('Gmail Trigger').item.json;\n  return { json: run($json.text, { date: src.date, from: src.from?.text || src.from, file: $json.fileName || '' }) };\n}\nif (typeof module !== \"undefined\") module.exports = { run };\n"
+      }
+    },
+    {
+      "id": "4",
+      "name": "Append to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Invoices"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": []
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF text": {
+      "main": [
+        [
+          {
+            "node": "Parse & validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & validate": {
+      "main": [
+        [
+          {
+            "node": "Append to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
