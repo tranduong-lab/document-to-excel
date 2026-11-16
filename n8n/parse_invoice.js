@@ -63,6 +63,6 @@ function run(text, meta = {}) {
 
 if (typeof $json !== 'undefined') {
   const src = $('Gmail Trigger').item.json;
-  return { json: run($json.text, { date: src.date, from: src.from?.text || src.from, file: $json.fileName || '' }) };
+  return { json: run($json.text, { date: src.date, from: src.from?.text || src.from, file: $('Gmail Trigger').item.binary?.attachment_0?.fileName || '' }) };
 }
 if (typeof module !== "undefined") module.exports = { run };
